@@ -144,6 +144,13 @@
                   }
                   
                 }
+
+                @media (max-width:850px) {
+                  .resultCard {
+                      margin-left: auto;
+                      margin-right: auto;
+                    }
+                }
         
                 .h1 {
                   align-items: center !important;
