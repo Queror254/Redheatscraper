@@ -33,16 +33,17 @@
                     @each(result in results)
                     <div class="resultCard">
                         <div class="cardTitle">
-                            <h1>[Hiring] {{result.title}}</h1>
+                            <h1>{{result.title}}</h1>
                         </div>
                         <div class="cardContent mt-3">
                             <div class="tag">
-                                <div class="tagContent">Hiring-filled</div>
+                                <div class="tagContent">{{result.status || result.domain}}</div>
                             </div>
                             <div class="details">
                                 <div class="detailsContent">Need help building an events api</div>
                             </div>
-                            <div class="chatLink"><a class="chatLink_btn" href="{{result.authorUrl}}">Chat</a></div>
+                            <div class="chatLink"><a class="chatLink_btn" href="{{result.authorUrl}}"
+                                    target="_blank">Chat</a></div>
                         </div>
                     </div>
                     @end

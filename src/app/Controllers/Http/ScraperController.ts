@@ -1,64 +1,92 @@
-// @ts-nocheck
-import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
+// @ts-nocheck 
+import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext';
 const puppeteer = require('puppeteer');
-const subreddit_url = (reddit) => `https://old.reddit.com/r/${reddit}/new/`
-//const autoScroll = require('puppeteer-autoscroll-down');
+const subreddit_url = (reddit) => `https://old.reddit.com/r/${reddit}/new/`;
 
 export default class ScraperController {
-
   public async index({ request, response, view }: HttpContextContract) {
-    const { subreddit } = request.only(['subreddit']);
-    //const subreddit:string = 'hiring';
+    const { subreddit, num } = request.only(['subreddit', 'num']);
 
     try {
-      // Launch the browser and open a new blank page
       const browser = await puppeteer.launch({ headless: false });
       const page = await browser.newPage();
-      await page.goto(subreddit_url(subreddit), { waitUntil: 'networkidle0', timeout: 60000 });
+      await page.setViewport({ width: 1920, height: 1080 });
+      await page.goto(subreddit_url(subreddit), { waitUntil: 'networkidle2', timeout: 60000 });
 
-      try {
-        let elements = await page.$$('#siteTable > div.thing'); 
-        let results = [];
+      let results = [];
 
-        await page.waitForSelector('#siteTable > div.thing')
-        await page.waitForSelector('.tagline > time');
-        await page.waitForSelector('.tagline > a');
-        await page.waitForSelector('.score.likes');
-        await page.waitForSelector('a[data-event-action="comments"]');
+      const scrapePosts = async (count) => {
+        let postCount = 0;
 
+        while (postCount < count) {
+          await page.waitForSelector('#siteTable > div.thing', { timeout: 60000 });
+          let elements = await page.$$('#siteTable > div.thing');
+          
+          if (elements.length === 0) break; // No posts found, exit loop
 
-        for (let element of elements) {
-          let title = await element.$eval(('p.title'), node => node.innerText.trim());
-          //let postTime = await element.$eval(('.tagline > time'), node => node.getAttribute('title'));
-         // let authorName = await element.$eval(('.tagline > a'), node => node.getAttribute('href'));
-          let authorUrl = await element.$eval(('.tagline > a'), node => node.innerText.trim());
-          authorUrl = 'https://www.reddit.com/user/' + authorUrl
-          let upvotes = await element.$eval(('div.score.likes'), node => node.innerText.trim());
-         // let comments = await element.$eval(('a[data-event-action="comments"]'), node => node.innerText.trim());
+          for (let element of elements) {
+            if (postCount >= count) break; // Stop if the number of processed posts reaches the limit
 
-          results.push({
-            title, 
-           // postTime, 
-           // authorName, 
-            authorUrl, 
-            upvotes,
-          //  comments
-          });
+            try {
+              // Fetch the post title
+              let title = await element.$eval('p.title', node => node.innerText.trim());
+
+              // Fetch and check the post's flair
+              let statusElement = await element.$('span.linkflairlabel');
+              let status = statusElement
+                ? await statusElement.evaluate(node => node.innerText.trim())
+                : '';
+              let domainElement = await element.$('span.domain');
+              let domain = domainElement
+                ? await domainElement.evaluate(node => node.innerText.trim())
+                : '';
+              
+              // Ensure we have a non-empty value for status or domain
+              let relevant = status.toLowerCase().includes('hiring') || domain.toLowerCase().includes('hiring');
+              if (relevant) {
+                let authorUrl = await element.$eval('.tagline > a', node => 'https://www.reddit.com/user/' + node.innerText.trim());
+                let upvotes = await element.$eval('div.score.likes', node => node.innerText.trim() || '0');
+
+                // Push the post details into the results array
+                results.push({
+                  title,
+                  status: status || 'N/A',  // Default value if status is not found
+                  domain: domain || 'N/A',  // Default value if domain is not found
+                  authorUrl,
+                  upvotes,
+                });
+
+                postCount++;
+              }
+            } catch (elementError) {
+              console.log('Error retrieving content for one post:', elementError);
+            }
+          }
+
+          if (postCount < count) {
+            // Click the "Next" button to go to the next page
+            let nextButton = await page.$('.nav-buttons .next-button a');
+            if (nextButton) {
+              await Promise.all([
+                page.waitForNavigation({ waitUntil: 'networkidle2' }),
+                nextButton.click(),
+              ]);
+            } else {
+              break; // No more pages to navigate
+            }
+          }
         }
+      };
 
-        await browser.close()
-        // Returning the results array
-        return view.render('home', {results});
+      await scrapePosts(num);
 
-      } catch(error) {
-        console.log('Error While retrieving content(Level Two)', error);
-      }
+      await browser.close();
 
-      await browser.close()
-      
+      // Returning the results array
+      return view.render('home', { results });
+
     } catch (error) {
-      console.log('Error while scraping(Top Level)', error);
+      console.log('Error while scraping', error);
     }
-
-}
+  }
 }
